@@ -1,9 +1,9 @@
 Module TAPL_Chapter_3.
 
-Load utils. Import TAPL_Utils.
-Load set. Import TAPL_Set NatSet.
+Require Import utils. Import TAPL_Utils.
+Require Import set. Import TAPL_Set NatSet.
 
-From Ssreflect Require Import ssreflect.
+From Ssreflect Require Import ssreflect eqtype ssrbool.
 Require Import List Omega.
 Require Import Classical_Prop Classical_Pred_Type.
 Require Import Wf_nat.
@@ -102,6 +102,29 @@ Inductive term : Set :=
 | Sfalse : term
 | Sif : term -> term -> term -> term.
 
+Scheme Equality for term.
+
+Lemma term_beqP : Equality.axiom term_beq.
+Proof.
+  move=> n m. apply: (iffP idP) => [|<-]; last first.
+
+  - elim n => //. move=> t1 IH1 t2 IH2 t3 IH3.
+    simpl.
+      by rewrite IH1 IH2 IH3.
+  - move: m; elim n => //; try by move=>m; elim m => //.
+    + move=> t1 IH1 t2 IH2 t3 IH3 m.
+      case m => //.
+      move=> t1' t2' t3'.
+      move/andP => [] H1 /andP [] H2 H3.
+      by rewrite (IH1 t1' H1) (IH2 t2' H2) (IH3 t3' H3).
+Qed.
+
+Canonical term_eqMixin := EqMixin term_beqP.
+Canonical term_eqType := Eval hnf in EqType term term_eqMixin.
+
+Implicit Arguments term_beqP [x y].
+Prenex Implicits term_beqP.
+
 Inductive value : term -> Prop :=
 | Vtrue : value Strue
 | Vfalse : value Sfalse.
@@ -112,6 +135,19 @@ Inductive eval : term -> term -> Prop :=
 | EIf t1 t1' t2 t3 : eval t1 t1' -> eval (Sif t1 t2 t3) (Sif t1' t2 t3).
 
 Hint Constructors eval.
+
+Definition eval_inv_spec t t' (e:eval t t') : Prop :=
+    match t with
+      | Sif Strue t2 t3 => t' = t2
+      | Sif Sfalse t2 t3 => t' = t3
+      | Sif (Sif t11 t12 t13) t2 t3 => exists t1' (e' : eval (Sif t11 t12 t13) t1'),
+                                         t' = Sif t1' t2 t3
+      | _ => False
+    end.
+
+Lemma eval_inv : forall (t t' : term) (e:eval t t'), eval_inv_spec t t' e.
+Proof.
+Admitted.
 
 Fixpoint eval1 (t : term) : option term :=
   match t with
@@ -139,7 +175,7 @@ Proof.
   by apply (IH1 _).
 Qed.
 
-Theorem thm_3_3_5 : forall t t' t'', eval t t' -> eval t t'' -> t' = t''.
+Theorem thm_3_5_4 : forall t t' t'', eval t t' -> eval t t'' -> t' = t''.
 Proof.
   move=> t.
   elim t; try by move=> t' t'' H; inversion H => //.
