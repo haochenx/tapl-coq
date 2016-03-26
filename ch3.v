@@ -136,6 +136,50 @@ Inductive eval : term -> term -> Prop :=
 
 Hint Constructors eval.
 
+Lemma eval_if : forall t1 t2 t3, exists t', eval (Sif t1 t2 t3) t'.
+Proof.
+  clear. move=> t1.
+  elim t1=> [t2 t3|t2 t3|].
+  - by exists t2.
+  - by exists t3.
+  - move=> t11 IH1 t12 IH2 t13 IH3 t2 t3.
+    have := (IH1 t12 t13) => [[t1' M]].
+    exists (Sif t1' t2 t3).
+      by apply EIf.
+Qed.
+
+Theorem eval_conv : forall t t' t'', eval t t' -> eval t t'' -> t' = t''.
+Proof.
+  move=> t.
+  elim t; try by move=> t' t'' H; inversion H => //.
+
+  move=> t1 IH1 t2 IH2 t3 IH3.
+  move=> t' t'' H1 H2.
+
+  case_eq t1.
+  + move=> E; rewrite E in H1, H2.
+    inversion H1 => //; clear dependent t0; clear dependent t4.
+    inversion H2 => //; clear dependent t0; clear dependent t4.
+    by rewrite<- H4; rewrite<- H5.
+      by inversion H6 => //.
+        by inversion H5 => //.
+  + move=> E; rewrite E in H1, H2.
+    inversion H1 => //; clear dependent t0; clear dependent t4.
+    inversion H2 => //; clear dependent t0; clear dependent t4.
+    by rewrite<- H4; rewrite<- H5.
+      by inversion H6 => //.
+        by inversion H5 => //.
+  + move=> t11 t12 t13 E. rewrite E in H1, H2.
+      inversion H1 => //; clear dependent t0; clear dependent t4; clear dependent t5.
+      inversion H2 => //; clear dependent t0; clear dependent t4; clear dependent t5.
+      rename t1'0 into t1''.
+      rewrite E in IH1.
+      have IH1' := (IH1 t1' t1'').
+      have : t1' = t1'' by auto.
+      move=>M; rewrite M.
+      done.
+Qed.
+
 Definition eval_inv_spec t t' (e:eval t t') : Prop :=
     match t with
       | Sif Strue t2 t3 => t' = t2
@@ -147,7 +191,42 @@ Definition eval_inv_spec t t' (e:eval t t') : Prop :=
 
 Lemma eval_inv : forall (t t' : term) (e:eval t t'), eval_inv_spec t t' e.
 Proof.
-Admitted.
+  move=> t.
+  elim t; try by move=> t' e; inversion e.
+
+  move=> t1 IH1 t2 IH2 t3 IH3 t'.
+  move=> e.
+  rewrite/eval_inv_spec.
+  case_eq t1 => [E|E|]; try subst.
+
+  - inversion e; subst => //.
+    inversion H3.
+  - inversion e; subst => //.
+    inversion H3.
+  - move=> t11 t12 t13 E.
+
+    rewrite E in IH1.
+    unfold eval_inv_spec in IH1.
+
+    have := (eval_if t11 t12 t13) => [[t1' e']].
+    have IH1' := (IH1 t1' e'); clear IH1.
+    exists t1'; exists e'.
+
+    case_eq t11.
+    + move=> E0; rewrite E0 in IH1'; subst.
+      inversion e; subst => //.
+      inversion e' => //; try by inversion H4.
+      inversion H3; subst => //; try by inversion H7.
+    + move=> E0; rewrite E0 in IH1'; subst.
+      inversion e; subst => //.
+      inversion e' => //; try by inversion H4.
+      inversion H3; subst => //; try by inversion H7.
+    + move=> t111 t112 t113 E0; rewrite E0 in IH1'; subst.
+      inversion e; subst => //.
+      rename t1'0 into t1''.
+      have : t1'' = t1' by eauto using eval_conv.
+      by move=> ->.
+Qed.
 
 Fixpoint eval1 (t : term) : option term :=
   match t with
@@ -176,36 +255,7 @@ Proof.
 Qed.
 
 Theorem thm_3_5_4 : forall t t' t'', eval t t' -> eval t t'' -> t' = t''.
-Proof.
-  move=> t.
-  elim t; try by move=> t' t'' H; inversion H => //.
-
-  move=> t1 IH1 t2 IH2 t3 IH3.
-  move=> t' t'' H1 H2.
-  
-  case_eq t1.
-  + move=> E; rewrite E in H1, H2.
-    inversion H1 => //; clear dependent t0; clear dependent t4.
-    inversion H2 => //; clear dependent t0; clear dependent t4.
-    by rewrite<- H4; rewrite<- H5.
-      by inversion H6 => //.
-        by inversion H5 => //.
-  + move=> E; rewrite E in H1, H2.
-    inversion H1 => //; clear dependent t0; clear dependent t4.
-    inversion H2 => //; clear dependent t0; clear dependent t4.
-    by rewrite<- H4; rewrite<- H5.
-      by inversion H6 => //.
-        by inversion H5 => //.
-  + move=> t11 t12 t13 E. rewrite E in H1, H2.
-      inversion H1 => //; clear dependent t0; clear dependent t4; clear dependent t5.
-      inversion H2 => //; clear dependent t0; clear dependent t4; clear dependent t5.
-      rename t1'0 into t1''.
-      rewrite E in IH1.
-      have IH1' := (IH1 t1' t1'').
-      have : t1' = t1'' by auto.
-      move=>M; rewrite M.
-      done.
-Qed.
+Proof. exact eval_conv. Qed.
 
 Definition normal (t : term) := ~ exists t', eval t t'.
 
