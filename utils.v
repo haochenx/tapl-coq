@@ -1,8 +1,8 @@
-Module TAPL_Utils.
-
-From Ssreflect Require Import ssreflect.
+From mathcomp Require Import ssreflect.
 Require Import Nat List Omega.
 Import ListNotations.
+
+Module TAPL_Utils.
 
 Definition max_l (l : list nat) : nat := fold_left max l 0.
 
@@ -48,3 +48,4 @@ Proof.
 Qed.
 
 End TAPL_Utils.
+

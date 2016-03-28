@@ -94,8 +94,11 @@ endif
 #                    #
 ######################
 
-VFILES:=utils.v\
-  ch3.v
+VFILES:=\
+  utils.v\
+  set.v\
+  ch3.v\
+
 
 -include $(addsuffix .d,$(VFILES))
 .SECONDARY: $(addsuffix .d,$(VFILES))

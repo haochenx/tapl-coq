@@ -1,13 +1,13 @@
-Module TAPL_Chapter_3.
+Load utils. Import TAPL_Utils.
+Load set. Import TAPL_Set NatSet.
 
-Require Import utils. Import TAPL_Utils.
-Require Import set. Import TAPL_Set NatSet.
-
-From Ssreflect Require Import ssreflect eqtype ssrbool.
+From mathcomp Require Import ssreflect eqtype ssrbool.
 Require Import List Omega.
 Require Import Classical_Prop Classical_Pred_Type.
 Require Import Wf_nat.
 Import ListNotations.
+
+Module TAPL_Chapter_3.
 
 Module Arith.
 
@@ -34,14 +34,16 @@ Module TermSetExt := SetExt TermDT TermSet.
 Notation term_set := TermSet.t.
 Import TermSetExt TermSetExt.Notations.
 
-Check {0}%nat_set.
-Check {Strue}.
+Local Open Scope set_scope.
+
+Check {{0}}%nat_set.
+Check {{Strue}}.
 
 Fixpoint const (t : term) : term_set :=
   match t with
-      Strue => { Strue }
-    | Sfalse => { Sfalse }
-    | S0 => { S0 }
+      Strue => {{ Strue }}
+    | Sfalse => {{ Sfalse }}
+    | S0 => {{ S0 }}
     | Ssucc t1 => const t1
     | Spred t1 => const t1
     | Siszero t1 => const t1
@@ -129,6 +131,8 @@ Inductive value : term -> Prop :=
 | Vtrue : value Strue
 | Vfalse : value Sfalse.
 
+Hint Constructors value.
+
 Inductive eval : term -> term -> Prop :=
 | EIfTrue t2 t3 : eval (Sif Strue t2 t3) t2
 | EIfFalse t2 t3 : eval (Sif Sfalse t2 t3) t3
@@ -146,6 +150,12 @@ Proof.
     have := (IH1 t12 t13) => [[t1' M]].
     exists (Sif t1' t2 t3).
       by apply EIf.
+Qed.
+
+Lemma eval_value : forall t {t'}, value t -> eval t t' -> False.
+Proof.
+  move=> t t' H.
+  inversion H => H1; inversion H1.
 Qed.
 
 Theorem eval_conv : forall t t' t'', eval t t' -> eval t t'' -> t' = t''.
@@ -291,15 +301,128 @@ Proof.
     by constructor.
 Qed.
 
-Inductive evalM : term -> term -> Prop :=
+Inductive evalM : term -> term -> Set :=
 | EMSingle t t' : eval t t' -> evalM t t'
 | EMRefl t : evalM t t
 | EMTrans t t' t'' : evalM t t' -> evalM t' t'' -> evalM t t''.
 
+Hint Constructors evalM.
+
+Fixpoint evalM_size {t t' : term} (e : evalM t t') {struct e} : nat :=
+  match e with
+      EMSingle _ _ _ => 1
+    | EMRefl _ => 0
+    | EMTrans _ _ _ e1 e2 => (evalM_size e1) + (evalM_size e2) + 1
+  end.
+
+Lemma evalM_size_ind : forall P, (forall t t' (e : evalM t t'), (forall t0 t'0 (d : evalM t0 t'0), evalM_size d < evalM_size e -> P t0 t'0 d) -> P t t' e) -> (forall (t t' : term) (e : evalM t t'), P t t' e).
+Proof.
+Admitted.
+
+Definition evalM_eval {t t'} (E : t <> t') (e : evalM t t') : ({ s : term & (eval t s) * (evalM s t')})%type.
+  induction e => //; subst; rename t0 into t.
+  - apply (existT _ t'). by apply pair.
+  - case (term_eq_dec t t') => E0; subst.
+    + by apply IHe2 in E.
+    + apply IHe1 in E0.
+      destruct E0 as [s [H11 H12]].
+      apply (existT _ s); apply pair => //.
+      by apply (EMTrans s t').
+Defined.
+
+Definition evalM_eval2 {t t'} (E : t <> t') (e : evalM t t') : ({ s : term  & { em : evalM s t' & (eval t s) * (evalM_size em < evalM_size e)} })%type.
+  induction e => //; subst; rename t0 into t.
+  - apply (existT _ t').
+    apply (existT _ (EMRefl t')).
+    by apply pair.
+  - case (term_eq_dec t t') => E0; subst.
+    + move: (IHe2 E) => [s [em [H1 H2]]].
+      apply (existT _ s).
+      apply (existT _ em).
+      apply pair => //.
+      intros; simpl; omega.
+    + move: (IHe1 E0) => [s [em [H1 H2]]].
+      apply (existT _ s).
+      apply (existT _ (EMTrans s t' t'' em e2)).
+      apply pair => //.
+      simpl; omega.
+Defined.
+
+Lemma evalM_value : forall t t', value t -> evalM t t' -> t = t'.
+Proof.
+  move=> t t' H1 H2; move: H2 H1.
+  elim; clear t t'.
+  - move=> t t' Ha Hb.
+    inversion Hb; subst; inversion Ha.
+  - done.
+  - move=> t t' t''.
+    move=> H1 IH1 H2 IH2 H.
+    have IH1' := (IH1 H).
+    have H' := H; rewrite IH1' in H'.
+    have IH2' := (IH2 H').
+    by rewrite IH1'.
+Qed.
+
+Inductive evalN : term -> term -> Set :=
+| ENSingle t t' : eval t t' -> evalN t t'
+| ENRefl t : evalN t t
+| ENTrans t t' t'' : eval t t' -> evalN t' t'' -> evalN t t''.
+
+Hint Constructors evalN.
+
+Derive Inversion evalN_inv with (forall t t' : term, evalN t t') Sort Set.
+
+Definition iffT (A B : Type) := ((A -> B) * (B -> A))%type.
+Notation "A <--> B" := (iffT A B) (at level 95).
+
+Lemma evalN_spec : forall t t', evalM t t' <--> evalN t t'.
+Proof.
+  move=> t t'.
+  rewrite/iffT; constructor => H.
+  (* -> *)
+  {
+    induction H using evalM_size_ind; try rename t0 into t.
+    destruct H; try rename t0 into t; try eauto using ENSingle, ENRefl.
+    destruct (term_eq_dec t t'); subst.
+    apply (H0 _ _ H1); by simpl; omega .
+    destruct (evalM_eval2 n H) as [s [em [H2 H3]]].
+    suff : evalN s t'' by eauto using ENTrans.
+    apply( H0 _ _ (EMTrans _ _ _ em H1)).
+    by intros; simpl; omega.
+  }
+
+  (* <- *)
+  elim H; intros; subst; try eauto using EMSingle, EMRefl.
+Qed.
+
+Lemma false_fancy : forall {P} (p : P -> False), forall Q, P -> Q.
+Proof. by intros; elimtype False. Qed.
+
 Theorem thm_3_5_11 :
   forall t u u', normal u -> normal u' -> evalM t u -> evalM t u' -> u = u'.
 Proof.
-Abort.
+  set lemA := thm_3_5_8.
+  have lemB : forall t {t'}, normal t -> eval t t' -> False; eauto using thm_3_5_8, eval_value.
+
+  move=> t u u' Hn Hn' He He'.
+  apply evalN_spec in He; apply evalN_spec in He'.
+
+  induction He; induction He'; subst; try rename t0 into t => //.
+  - eauto using eval_conv.
+  - apply lemA in Hn'.
+    inversion Hn' as [E|E]; rewrite<- E in e; inversion e.
+  - have : t' = t'0 by eauto using eval_conv. intros; subst t'0.
+    apply lemA in Hn.
+    inversion Hn as [E|E]; subst t'; idtac
+    ; inversion He'; subst => //; inversion H.
+  - elim (lemB t t') => //.
+  - elim (lemB t t') => //.
+  - move: (eval_conv _ _ _ e e0); intros; subst t'0.
+    apply IHHe => //.
+  - elim (lemB t t') => //.
+  - move: (eval_conv _ _ _ e e0); intros; subst t'0.
+    apply IHHe => //.
+Qed.
 
 End Bool.
 
