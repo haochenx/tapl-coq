@@ -339,13 +339,11 @@ Definition evalM_eval2 {t t'} (E : t <> t') (e : evalM t t') : ({ s : term  & { 
     + move: (IHe2 E) => [s [em [H1 H2]]].
       apply (existT _ s).
       apply (existT _ em).
-      apply pair => //.
-      intros; simpl; omega.
+      by apply pair => //; simpl; omega.
     + move: (IHe1 E0) => [s [em [H1 H2]]].
       apply (existT _ s).
       apply (existT _ (EMTrans s t' t'' em e2)).
-      apply pair => //.
-      simpl; omega.
+      by apply pair => //; simpl; omega.
 Defined.
 
 Lemma evalM_value : forall t t', value t -> evalM t t' -> t = t'.
@@ -380,16 +378,14 @@ Proof.
   move=> t t'.
   rewrite/iffT; constructor => H.
   (* -> *)
-  {
-    induction H using evalM_size_ind; try rename t0 into t.
-    destruct H; try rename t0 into t; try eauto using ENSingle, ENRefl.
-    destruct (term_eq_dec t t'); subst.
-    apply (H0 _ _ H1); by simpl; omega .
-    destruct (evalM_eval2 n H) as [s [em [H2 H3]]].
-    suff : evalN s t'' by eauto using ENTrans.
-    apply( H0 _ _ (EMTrans _ _ _ em H1)).
-    by intros; simpl; omega.
-  }
+  induction H using evalM_size_ind; try rename t0 into t.
+  destruct H; try rename t0 into t; try eauto using ENSingle, ENRefl.
+  destruct (term_eq_dec t t'); subst.
+  apply (H0 _ _ H1); by simpl; omega .
+  destruct (evalM_eval2 n H) as [s [em [H2 H3]]].
+  suff : evalN s t'' by eauto using ENTrans.
+  apply( H0 _ _ (EMTrans _ _ _ em H1)).
+  by intros; simpl; omega.
 
   (* <- *)
   elim H; intros; subst; try eauto using EMSingle, EMRefl.
