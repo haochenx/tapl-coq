@@ -1,5 +1,5 @@
-Load utils. Import TAPL_Utils.
-Load set. Import TAPL_Set NatSet.
+Require Import utils. Import TAPL_Utils.
+Require Import set. Import TAPL_Set NatSet.
 
 From mathcomp Require Import ssreflect eqtype ssrbool.
 Require Import List Omega.
@@ -133,23 +133,33 @@ Inductive value : term -> Prop :=
 
 Hint Constructors value.
 
-Inductive eval : term -> term -> Prop :=
+
+
+Inductive Type_to_Prop_embedding (T:Type) : Prop :=
+  witness : T -> Type_to_Prop_embedding T.
+
+Hint Constructors Type_to_Prop_embedding.
+
+Notation " << T >> " := (Type_to_Prop_embedding T).
+
+Inductive eval : term -> term -> Set :=
 | EIfTrue t2 t3 : eval (Sif Strue t2 t3) t2
 | EIfFalse t2 t3 : eval (Sif Sfalse t2 t3) t3
 | EIf t1 t1' t2 t3 : eval t1 t1' -> eval (Sif t1 t2 t3) (Sif t1' t2 t3).
 
 Hint Constructors eval.
 
-Lemma eval_if : forall t1 t2 t3, exists t', eval (Sif t1 t2 t3) t'.
+
+Lemma eval_if : forall t1 t2 t3, exists t', <<eval (Sif t1 t2 t3) t'>>.
 Proof.
   clear. move=> t1.
   elim t1=> [t2 t3|t2 t3|].
   - by exists t2.
   - by exists t3.
   - move=> t11 IH1 t12 IH2 t13 IH3 t2 t3.
-    have := (IH1 t12 t13) => [[t1' M]].
+    have := (IH1 t12 t13) => [[t1' [M]]].
     exists (Sif t1' t2 t3).
-      by apply EIf.
+      by exists; apply EIf.
 Qed.
 
 Lemma eval_value : forall t {t'}, value t -> eval t t' -> False.
@@ -218,7 +228,7 @@ Proof.
     rewrite E in IH1.
     unfold eval_inv_spec in IH1.
 
-    have := (eval_if t11 t12 t13) => [[t1' e']].
+    have := (eval_if t11 t12 t13) => [[t1' [e']]].
     have IH1' := (IH1 t1' e'); clear IH1.
     exists t1'; exists e'.
 
@@ -267,14 +277,14 @@ Qed.
 Theorem thm_3_5_4 : forall t t' t'', eval t t' -> eval t t'' -> t' = t''.
 Proof. exact eval_conv. Qed.
 
-Definition normal (t : term) := ~ exists t', eval t t'.
+Definition normal (t : term) := ~ exists t', <<eval t t'>>.
 
 Theorem thm_3_5_7 : forall t, value t -> normal t.
 Proof.
   move=> t H.
   unfold normal.
   apply all_not_not_ex.
-  move=> t' H1.
+  move=> t' [H1].
   inversion H;
     by rewrite<- H0 in H1; inversion H1.
 Qed.
@@ -296,9 +306,9 @@ Proof.
   + move=> t2 t3; exists t3; by auto.
   + move=> t11 IH1 t12 IH2 t13 IH3 t2 t3.
     have IH1' := (IH1 t12 t13).
-    destruct IH1' as [t1' H].
+    destruct IH1' as [t1' [H]].
     exists (Sif t1' t2 t3).
-    by constructor.
+    by exists; constructor.
 Qed.
 
 Inductive evalM : term -> term -> Set :=
@@ -315,35 +325,97 @@ Fixpoint evalM_size {t t' : term} (e : evalM t t') {struct e} : nat :=
     | EMTrans _ _ _ e1 e2 => (evalM_size e1) + (evalM_size e2) + 1
   end.
 
-Lemma evalM_size_ind : forall P, (forall t t' (e : evalM t t'), (forall t0 t'0 (d : evalM t0 t'0), evalM_size d < evalM_size e -> P t0 t'0 d) -> P t t' e) -> (forall (t t' : term) (e : evalM t t'), P t t' e).
-Proof.
-Admitted.
+Require Import Wf_nat.
 
-Definition evalM_eval {t t'} (E : t <> t') (e : evalM t t') : ({ s : term & (eval t s) * (evalM s t')})%type.
+Inductive evalM_totspace : Set :=
+| in_evalM : forall t t', evalM t t' -> evalM_totspace.
+
+Definition in_evalM_inv : evalM_totspace -> {t : term & {t' : term & evalM t t'} }.
+Proof.
+  case => t t' Ht.
+  exists t; exists t'; exact Ht.
+Defined.
+
+Definition out_evalM0 tt := projT1 (in_evalM_inv tt).
+Definition out_evalM1 tt := projT1 (projT2 (in_evalM_inv tt)).
+Definition out_evalM tt : evalM (out_evalM0 tt) (out_evalM1 tt) := projT2 (projT2 (in_evalM_inv tt)).
+
+Lemma out_evalME t t' :
+  forall e : evalM t t', out_evalM (in_evalM t t' e) = e.
+Proof.
+  by case.
+Qed.
+
+Definition evalM_totspace_lt : evalM_totspace -> evalM_totspace -> Prop := fun tt uu => evalM_size (out_evalM tt) < evalM_size (out_evalM uu).
+
+Notation "d <t< e" := (evalM_totspace_lt d e) (at level 0).
+
+Lemma evalM_totspace_lt_spec t t' Ht u u' Hu : (in_evalM t t' Ht) <t< (in_evalM u u' Hu) <-> evalM_size Ht < evalM_size Hu.
+Proof.
+  rewrite /evalM_totspace_lt.
+  by rewrite !out_evalME.
+Qed.
+
+Lemma wf_total_space_of_evalM : well_founded evalM_totspace_lt.
+Proof.
+  have : forall d e, d <t< e -> evalM_size (out_evalM d) < evalM_size (out_evalM e) by done.
+  by move /well_founded_lt_compat.
+Qed.
+
+Lemma evalM_totspace_size_ind P :
+    (forall e, (forall d, d <t< e -> P d) -> P e)
+    -> forall e, P e.
+Proof Fix wf_total_space_of_evalM P.
+
+Lemma evalM_size_ind P :
+  (forall t t' (e : evalM t t'),
+      (forall t0 t'0 (d : evalM t0 t'0),
+          evalM_size d < evalM_size e -> P t0 t'0 d)
+      -> P t t' e)
+  -> (forall (t t' : term) (e : evalM t t'), P t t' e).
+Proof.
+  set Q := (fun e => P (out_evalM0 e) (out_evalM1 e) (out_evalM e)).
+  have HPQ : forall t t' e, P t t' e = Q (in_evalM _ _ e).
+    move => t t' e.
+    rewrite /Q.
+    by case e => //.
+  move => IH t t' e.
+  rewrite HPQ.
+  apply evalM_totspace_size_ind.
+  case => u u' e0 IH0.
+  rewrite -HPQ.
+  apply IH.
+  move => v v' d o.
+  rewrite HPQ.
+  apply IH0.
+  by apply evalM_totspace_lt_spec.
+Qed.
+
+Definition evalM_eval {t t'} (E : t <> t') (e : evalM t t') : exists s : term, <<eval t s>> /\ <<evalM s t'>>.
   induction e => //; subst; rename t0 into t.
-  - apply (existT _ t'). by apply pair.
+  - by exists t'; apply conj.
   - case (term_eq_dec t t') => E0; subst.
     + by apply IHe2 in E.
     + apply IHe1 in E0.
-      destruct E0 as [s [H11 H12]].
-      apply (existT _ s); apply pair => //.
-      by apply (EMTrans s t').
+      destruct E0 as [s [H11 [H12]]].
+      exists s; apply conj => //.
+      by exists; apply (EMTrans s t').
 Defined.
 
-Definition evalM_eval2 {t t'} (E : t <> t') (e : evalM t t') : ({ s : term  & { em : evalM s t' & (eval t s) * (evalM_size em < evalM_size e)} })%type.
+Definition evalM_eval2 {t t'} (E : t <> t') (e : evalM t t') :
+  exists (s : term) (em : evalM s t'), <<eval t s>> /\ <<evalM_size em < evalM_size e>>.
   induction e => //; subst; rename t0 into t.
-  - apply (existT _ t').
-    apply (existT _ (EMRefl t')).
-    by apply pair.
+  - exists t'; exists (EMRefl t') => /=.
+    apply conj => //.
+    by exists.
   - case (term_eq_dec t t') => E0; subst.
-    + move: (IHe2 E) => [s [em [H1 H2]]].
-      apply (existT _ s).
-      apply (existT _ em).
-      by apply pair => //; simpl; omega.
-    + move: (IHe1 E0) => [s [em [H1 H2]]].
-      apply (existT _ s).
-      apply (existT _ (EMTrans s t' t'' em e2)).
-      by apply pair => //; simpl; omega.
+    + move: (IHe2 E) => [s [em [[H1] [H2]]]].
+      exists s; exists em.
+      apply conj => //=.
+      exists; omega.
+    + move: (IHe1 E0) => [s [em [[H1] [H2]]]].
+      exists s; exists (EMTrans s t' t'' em e2).
+      apply conj => //=; exists; omega.
 Defined.
 
 Lemma evalM_value : forall t t', value t -> evalM t t' -> t = t'.
@@ -370,39 +442,45 @@ Hint Constructors evalN.
 
 Derive Inversion evalN_inv with (forall t t' : term, evalN t t') Sort Set.
 
+(*
 Definition iffT (A B : Type) := ((A -> B) * (B -> A))%type.
 Notation "A <--> B" := (iffT A B) (at level 95).
+*)
 
-Lemma evalN_spec : forall t t', evalM t t' <--> evalN t t'.
+Lemma evalN_spec : forall t t', <<evalM t t'>> <-> <<evalN t t'>>.
 Proof.
   move=> t t'.
-  rewrite/iffT; constructor => H.
+  apply conj => [[H]|[H]].
   (* -> *)
   induction H using evalM_size_ind; try rename t0 into t.
   destruct H; try rename t0 into t; try eauto using ENSingle, ENRefl.
   destruct (term_eq_dec t t'); subst.
   apply (H0 _ _ H1); by simpl; omega .
-  destruct (evalM_eval2 n H) as [s [em [H2 H3]]].
-  suff : evalN s t'' by eauto using ENTrans.
+  destruct (evalM_eval2 n H) as [s [em [[H2] [H3]]]].
+  suff : <<evalN s t''>> by case; exists; eauto using ENTrans.
   apply( H0 _ _ (EMTrans _ _ _ em H1)).
   by intros; simpl; omega.
 
   (* <- *)
-  elim H; intros; subst; try eauto using EMSingle, EMRefl.
+  elim H => //.
+    by move => *; exists; apply EMSingle.
+  move => u u' u'' H0 H1 [H2].
+  exists; eapply EMTrans.
+    by apply EMSingle; exact H0.
+  done.
 Qed.
 
 Lemma false_fancy : forall {P} (p : P -> False), forall Q, P -> Q.
 Proof. by intros; elimtype False. Qed.
 
 Theorem thm_3_5_11 :
-  forall t u u', normal u -> normal u' -> evalM t u -> evalM t u' -> u = u'.
+  forall t u u', normal u -> normal u' -> <<evalM t u>> -> <<evalM t u'>> -> u = u'.
 Proof.
   set lemA := thm_3_5_8.
   have lemB : forall t {t'}, normal t -> eval t t' -> False; eauto using thm_3_5_8, eval_value.
 
-  move=> t u u' Hn Hn' He He'.
-  apply evalN_spec in He; apply evalN_spec in He'.
-
+  move=> t u u' Hn Hn'.
+  move /evalN_spec => [He] /evalN_spec [He'].
   induction He; induction He'; subst; try rename t0 into t => //.
   - eauto using eval_conv.
   - apply lemA in Hn'.
