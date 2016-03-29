@@ -1,2 +1,4 @@
-./ch3.v
-./utils.v
+-R .
+ch3.v
+set.v
+utils.v
