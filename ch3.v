@@ -498,6 +498,52 @@ Proof.
     apply IHHe => //.
 Qed.
 
+Lemma value_normal_equiv : forall v, normal v <-> value v.
+Proof. move=> v; constructor; auto using thm_3_5_7, thm_3_5_8. Qed.
+
+Lemma evalM_equiv : forall t t2 t3 t', evalM t t' -> evalM (Sif t t2 t3) (Sif t' t2 t3).
+Proof. move=> t t2 t3 t'; elim; try by eauto. Qed.
+
+Hint Resolve evalM_equiv.
+
+Definition evalMf : forall t, { v : term | (normal v) /\ << evalM t v >> }.
+  have lemA := value_normal_equiv.
+  elim.
+  - exists Strue; constructor; try rewrite lemA; constructor => //.
+  - exists Sfalse; constructor; try rewrite lemA; constructor => //.
+  - move=> t1 IH1 t2 IH2 t3 IH3.
+    (* TODO why i cannot do move: IH1 => [v1 [IH1n [IH1e]]] *)
+    move: IH1 => [v1 [IH1n IH1e]].
+    (* TODO why cannot use rewrite lemA in IH1n ? *)
+    apply thm_3_5_8 in IH1n.
+    move: v1 IH1n IH1e => []; last by move=> ? ? ? IH1n; elimtype False; inversion IH1n.
+    + move=> _ IH1e.
+      move: IH2 => [v2 [IH2n IH2e]].
+      exists v2; constructor => //.
+      move: IH1e => [IH1e].
+      move: IH2e => [IH2e].
+      constructor.
+      suff: evalM (Sif t1 t2 t3) t2 by eauto.
+      suff: evalM (Sif t1 t2 t3) (Sif Strue t2 t3) by eauto.
+      by eauto.
+    + move=> _ IH1e.
+      move: IH3 => [v3 [IH3n IH3e]].
+      exists v3; constructor => //.
+      move: IH1e => [IH1e].
+      move: IH3e => [IH3e].
+      constructor.
+      suff: evalM (Sif t1 t2 t3) t3 by eauto.
+      suff: evalM (Sif t1 t2 t3) (Sif Sfalse t2 t3) by eauto.
+      by eauto.
+Qed.
+
+Lemma thm_3_5_12 : forall t, exists v, (normal v) /\ << evalM t v >>.
+Proof.
+  move=> t.
+  move: (evalMf t) => [v [Hn He]].
+  by eauto.
+Qed.
+
 End Bool.
 
 End TAPL_Chapter_3.
